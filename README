@@ -1,0 +1,114 @@
+This repository contains c3-construct files for adding capabilities to
+a running OverC system.
+
+The details of what c3-construct does are contained within the OverC
+main repository: https://github.com/OverC/meta-overc
+
+---->---->---->---->---->---->
+
+    overc: introduce "c3-construct"
+    
+    c3-construct is a configuration script-engine for containers. It
+    is not an equivalent of docker files, since it isn't concerned
+    with building containers (but that could be added later), it is
+    only concerned with using existing tools to safely configure a
+    container after it has been added.
+    
+    c3-construct excutes configuration shell snippets in an execution
+    safe environment .. where only whitelisted/validated commands are
+    allowed. This means that rm -rf / will not execute if placed in
+    a configuration chunk.
+    
+    Allowed commands are loaded from .cmd files, which are found
+    in /usr/sbin/c3-cmds/. These allowed commands take one of
+    three forms:
+    
+      1) wrappers around commands
+      2) utility routines and shell functions
+      3) direct symlinks to white listed commands
+    
+    Types 1 and 2 make commands available for use directly within
+    a ".c3" file. Wrappers allow type/argument checking before
+    calling the real executuable .. while utility routines provide
+    some sort of custom capability. Note: the framework automatically
+    makes the "real" exectuable available via a variable of the same
+    name as a wrapper routine.
+    
+    example:
+    
+      basename() {
+          echo $basename
+      }
+    
+    The above wrapper would locate 'basename' and any calls to
+    basename in a .c3 file would call this utility instead. The
+    utility function can then call the "real" basename by using the
+    $basename variable.
+    
+    Type #3 addresses 3rd party scripts/routines that are not able
+    to use the utility/wrapper routines. These symlinked executables
+    are made available in a temporary directory that is placed on
+    the path of the executing configuration. Be careful with this,
+    since no checking is done.
+    
+    To add an executable to the temporary directory and limited
+    path, a .cmd must simply define the executable name.
+    
+    example:
+    
+       #define system-virt-detect
+    
+    Would make this executable available in the temporary path.
+    
+    A full example of a cadvisor contruction follows:
+    
+    ----
+
+      c3-ctl add docker://google/cadvisor
+
+      c3-cfg -n cadvisor mount bind:/:/rootfs
+      c3-cfg -n cadvisor mount bind:/proc:/rootfs/proc
+      c3-cfg -n cadvisor mount bind:/var/run:/var/run
+      c3-cfg -n cadvisor mount bind:/dev/disk/:/dev/disk/
+      c3-cfg -n cadvisor mount bind:/sys:/sys
+      c3-cfg -n cadvisor mount bind:/sys/fs/cgroup:/sys/fs/cgroup
+      c3-cfg -n cadvisor mount bind:/sys/fs/cgroup/cpu:/sys/fs/cgroup/cpu
+      c3-cfg -n cadvisor mount bind:/sys/fs/cgroup/devices:/sys/fs/cgroup/devices
+      c3-cfg -n cadvisor mount bind:/sys/fs/cgroup/cpuacct:/sys/fs/cgroup/cpuacct
+      c3-cfg -n cadvisor mount bind:/sys/fs/cgroup/cpuset:/sys/fs/cgroup/cpuset
+      c3-cfg -n cadvisor mount bind:/sys/fs/cgroup/memory:/sys/fs/cgroup/memory
+      c3-cfg -n cadvisor mount bind:/sys/fs/cgroup/blkio:/sys/fs/cgroup/blkio
+
+      c3-ctl start cadvisor
+    
+      netprime=$(c3-ctl netprime)
+      c3-cfg link $netprime:8080 cadvisor:8080
+
+      c3-cfg gen cadvisor
+      c3-cfg gen $netprime  
+
+      c3-ctl stack $netprime
+      c3-ctl stack cadvisor
+      
+    ----
+    
+    Common routines can be grouped into .c3 files and included via the
+    include command.
+    
+    example:
+    
+      include common.c3
+      c3-cfg -n foo set autostart:dom0
+    
+    Would expand and execute the common.c3 file before running the c3-cfg
+    command.
+    
+    Signed-off-by: Bruce Ashfield <bruce.ashfield@windriver.com>
+    
+---->---->---->---->---->---->
+
+Once the above example is executed on the target, i.e.:
+
+  % c3-construct cadvisor.c3
+
+You can access the running container at the public IP of the platform, port 8080.
